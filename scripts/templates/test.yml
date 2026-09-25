@@ -1,0 +1,39 @@
+name: Test
+
+# Starting-point test gate for a Node/Next.js + Prisma target repo.
+# Adapt the install / codegen / test steps to the target's actual stack.
+# Verify the suite passes locally BEFORE committing this — never add a red gate.
+
+on:
+  pull_request:
+  # No `push:` -- CI is preventative only, nothing runs after a merge (operator, 2026-09-15).
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Drop this step if the target has no codegen (Prisma / GraphQL / protobuf).
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test

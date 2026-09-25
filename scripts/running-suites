@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+"""running-suites -- one `<pid><TAB><tree>` row per pytest run over `scripts/tests` live on this box.
+
+`resource-lock.sh` calls it by command name, and so can any hook that wants the same count; the
+output contract below is the one they share.
+"""
+import os
+
+
+def _running_suites() -> list:
+    """One entry per RUNNING SUITE -- not per matching pid -- with the tree each is in.
+
+    /proc directly rather than `pgrep -a`: busybox pgrep here does not take -a, and this must not
+    depend on which pgrep won the PATH (a known trap one tool over). Returns [] on any
+    error -- a guard that cannot measure says so by staying quiet about the count, not by failing.
+
+    ONE `uv run ... pytest` IS TWO PROCESSES, AND THIS USED TO REPORT IT AS TWO SUITES.
+    The `uv` wrapper and the python child it execs BOTH carry a `pytest` argv token and the
+    `scripts/tests` path, so both satisfy the predicate. Measured on this box during a real run:
+
+        pid    comm    pgid    sid     cwd
+        16429  uv      16429   16427   app
+        16440  pytest  16429   16427   app             <- one run, two matches, ONE pgid
+
+    THE COST WAS PAID ENTIRELY BY SESSIONS TRYING TO OBEY. Four instances on 2026-08-28: a seat
+    relayed the hook's "2 suites" over its own `comm`-exact walk that returned 1; a session with a
+    green diff idled against a run that had already finished; and one told the operator "4 full
+    suites" when a later walk found ZERO. A counter that only over-reports never fails visibly --
+    it only produces invisible waiting -- which is why it survived four rounds.
+
+    IT IS NOT ARITHMETIC AND `// 2` WOULD BE A FUDGE. `uv run ... pytest` legitimately IS two
+    processes; a bare `pytest scripts/tests/` is one. Dividing would be right on today's invocation
+    and wrong the moment anyone runs it directly.
+
+    THE RULE IS: A MATCHING PROCESS THAT HAS A MATCHING CHILD IS A WRAPPER, NOT A SECOND SUITE.
+    Drop it, keep the descendant that is actually running the tests.
+
+    TWO REJECTED RULES, BOTH TRIED AND BOTH MEASURED WRONG HERE, recorded so they are not re-reached:
+
+      * **cwd** -- the first suggestion, and closest to the RULE (one suite per box). It UNDER-counts:
+        two genuine concurrent runs in one worktree are exactly the contention this hook warns about,
+        and cwd reports them as one. Over-counting was the filed defect; under-counting is worse,
+        because this hook's silence is what a session reads as permission.
+      * **process group** -- looks exact (the wrapper and its child share a pgid, measured above) and
+        BROKE FOUR TESTS, two of them pre-existing. `subprocess.Popen` children inherit the parent's
+        pgid, and the process running this repo's suite matches the predicate itself, so a suite
+        spawned from a suite collapses into it -- and so do two independent probes started by one
+        runner. pgid answers "same invocation TREE", which is not "same invocation".
+
+    Parent-with-a-matching-child is narrower than both and survives all four cases: `uv`+child
+    collapse (child's ppid is uv), two siblings do not (neither is the other's parent), and a nested
+    run is still reported (its parent is dropped, it is kept).
+
+    THE DESCENDANT PID IS REPORTED, not the wrapper: it is the process doing the work, it is what
+    `kill`/`ps` want, and for `uv run` the wrapper is the one that would vanish first.
+
+    SCOPE IS DELIBERATELY UNCHANGED AND IS STILL BROADER THAN THE RULE. The predicate matches any
+    process whose argv carries a `pytest` token and a `scripts/tests` path -- including a run in a
+    scratch tree that is not this repo at all (reproduced exactly with a `sleep`). So
+    this answers "is something pytest-shaped running", not "is THE repo's gate running". That is
+    arguably right for a CONTENTION warning, since a suite-shaped load on 2 cores costs the same
+    wherever it lives, but it is a different question from the one the message implies. That decision
+    is not settled here; this function fixes the counting only.
+
+    DELIBERATELY NOT READ FROM `resource-lock.sh`. Asking the lock "is it held" looks
+    like the tidier question and is the wrong one while the lock's fourth property is unmet: a session
+    that runs the suite UNWRAPPED takes no lock, so the lock would report FREE with a real suite
+    running -- under-reporting, silently, in the exact case documented as unhandled. A pid walk sees
+    unwrapped runs. If unwrapped runs are ever made impossible, the lock becomes sufficient and
+    this walk becomes redundant; that is downstream of a decision nobody has made.
+    """
+    matches = {}
+    try:
+        for pid in os.listdir("/proc"):
+            if not pid.isdigit() or int(pid) == os.getpid():
+                continue
+            try:
+                with open(f"/proc/{pid}/cmdline", "rb") as fh:
+                    argv = fh.read().decode("utf-8", "replace").split("\0")
+                if not any(a.endswith("/pytest") or a == "pytest" for a in argv):
+                    continue
+                if not any("scripts/tests" in a for a in argv):
+                    continue
+                # A `resource-lock.sh` WRAPPER IS NOT A RUNNING SUITE, and counting it inverts
+                # this whole report. Its argv carries the full command it will eventually run, so
+                # it satisfies both predicates above while BLOCKED in `flock`'s queue -- a session
+                # doing exactly the right thing is then reported as contention, which is what makes
+                # the NEXT session wait too. That is the double count's cost (invisible waiting)
+                # arriving by a second route, and the parent-with-a-matching-child rule below
+                # cannot catch it: a queued wrapper has no child yet.
+                #
+                # Dropping it loses nothing when the run IS live -- the wrapper then has a `uv` or
+                # `pytest` descendant, and that descendant is the process doing the work and the
+                # one this function reports.
+                #
+                # Found 2026-08-30 by `resource-lock.sh`'s own witness naming a queued run as
+                # having "ran alongside you", which read as a mutual-exclusion failure. It was not:
+                # exclusion was re-measured and holds (refused with rc=2 while held, ran once
+                # free). The instrument was wrong, not the lock -- and the same false positive had
+                # been sitting in this hook's advisory, telling sessions all evening that N suites
+                # were "already going" when some of them were queued behind the very lock the
+                # message recommends.
+                if any(a.endswith("resource-lock.sh") for a in argv):
+                    continue
+                # Field 4 of /proc/<pid>/stat is ppid. Split AFTER the last ')', because the comm
+                # field is parenthesised and may contain spaces and parens -- splitting from the
+                # front on whitespace is the classic way to read the wrong column here.
+                with open(f"/proc/{pid}/stat") as fh:
+                    raw = fh.read()
+                ppid = raw[raw.rindex(")") + 2:].split()[1]
+                cwd = os.readlink(f"/proc/{pid}/cwd")
+                matches[pid] = (ppid, os.path.basename(cwd))
+            except (OSError, ValueError, IndexError):
+                continue  # exited mid-scan, not ours to read, or an unparseable stat
+    except OSError:
+        return []
+    # A MATCHING PROCESS THAT HAS A MATCHING CHILD IS A WRAPPER, NOT A SECOND SUITE. Drop it and
+    # keep the descendant, which is the process actually running the tests.
+    parents = {ppid for ppid, _ in matches.values()}
+    return [(pid, tree) for pid, (_, tree) in matches.items() if pid not in parents]
+
+
+def main() -> None:
+    # A CLI ARM, BEFORE STDIN IS TOUCHED, so `resource-lock.sh` can reuse `_running_suites()`
+    # instead of growing a second detector. That function has already been corrected once
+    # (a `uv run ... pytest` is two pids and was counted as two suites), and the cost of
+    # that bug was paid entirely by sessions trying to obey. A second implementation would drift
+    # from it silently, in the direction that produces invisible waiting.
+    #
+    # It prints `<pid>\t<tree>` rows and nothing else, so a shell caller can read it with `while
+    # read`. No rows means no suites -- which a caller must not confuse with "the probe failed";
+    # `_running_suites()` returns [] on error too, so the exit code is the only discriminator and
+    # this arm keeps it 0 for a genuine empty and lets an exception exit non-zero.
+    for pid, tree in _running_suites():
+        print(f"{pid}\t{tree}")
+
+
+if __name__ == "__main__":
+    main()

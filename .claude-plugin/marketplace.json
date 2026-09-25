@@ -1,0 +1,11 @@
+{
+  "name": "forge-tools",
+  "owner": {"name": "Forge-Tools"},
+  "plugins": [
+    {
+      "name": "forge-tools",
+      "source": "./adapters/claude-code",
+      "description": "Claude Code adapter for Forge-Tools: maps the session's CLAUDE_CODE_SESSION_ID and CLAUDE_PID onto FORGE_TOOLS_SESSION_ID and FORGE_TOOLS_WAKE_PID for later Bash tool calls."
+    }
+  ]
+}

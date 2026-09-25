@@ -1,0 +1,13 @@
+{
+  "ignorePatterns": [
+    "**/node_modules/**",
+    ".next/**",
+    "out/**",
+    "dist/**",
+    "build/**",
+    "coverage/**",
+    "**/*.min.js",
+    "prisma/generated/**",
+    "public/**"
+  ]
+}

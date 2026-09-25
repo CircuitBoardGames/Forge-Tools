@@ -1,0 +1,31 @@
+# Backticked `/tokens` that are NOT skill or command triggers, so handoff.sh's trigger gate never
+# asks a skill or command root for them. One token per line; `#` starts a comment.
+# FORGE_TOOLS_TRIGGER_EXCEPTIONS (space-separated) ADDS to this list.
+
+# Claude Code built-ins. Real triggers, supplied by the CLI rather than by a skill directory,
+# so they resolve nowhere in this repo and never will.
+/compact
+/clear
+/login
+/logout
+/model
+/memory
+/config
+/help
+/reload-plugins
+/add-dir
+/doctor
+/status
+/cost
+
+# Filesystem paths that share the one-token shape. Not triggers at all.
+/proc
+/root
+/tmp
+/etc
+/opt
+/var
+/usr
+/home
+/dev
+/bin

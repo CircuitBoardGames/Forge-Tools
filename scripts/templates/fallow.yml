@@ -1,0 +1,39 @@
+name: Fallow
+
+# Codebase intelligence for a target repo's first-party TS/JS (fallow-rs/fallow).
+# Pair with a target .fallowrc.json whose ignorePatterns exclude build output,
+# generated code, static assets, and any vendored trees.
+
+on:
+  pull_request:
+  # No `push:` -- CI is preventative only, nothing runs after a merge (operator, 2026-09-15).
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  fallow:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: fallow auto-scopes PR runs to the diff vs the PR
+          # base SHA, which a default shallow (depth-1) clone doesn't
+          # contain — the audit dies with "could not determine changed
+          # files for base ref" before analyzing anything.
+          fetch-depth: 0
+      # The fallow action, pinned by commit. The default is its PUBLIC source, the Fallow-Forgejo
+      # fork of fallow-rs/fallow v3.5.1 with the SARIF steps removed -- the one org name in
+      # Forge-Tools' defaults, on purpose: it is where anyone can fetch it. A bare
+      # `fallow-rs/fallow@v3` does not resolve on a Forgejo runner (it looks on data.forgejo.org:
+      # "repository not found", exit 128). A deployment that serves a local mirror sets
+      # FORGE_TOOLS_FALLOW_ACTION, and bootstrap-target-repo.sh writes that ref here instead.
+      - uses: https://github.com/CircuitBoardGames/Fallow-Forgejo@416775ca7c67af339a01860bb32e55184fd58007 # FORGE_TOOLS_FALLOW_ACTION
+        with:
+          command: audit
+          config: .fallowrc.json
+          comment: true
+          review-comments: true

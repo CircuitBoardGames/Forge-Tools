@@ -1,0 +1,37 @@
+name: Test
+
+# Forge gate for a Python repo, committed by `scripts/hub-api.sh repo provision --kind python`.
+# The repo's branch protection requires `Test /*`, the contexts this workflow registers,
+# so renaming `name:` above without re-running provision blocks every merge.
+#
+# A present `.forgejo/workflows` is read INSTEAD of `.github/workflows`, so on a fork upstream's
+# GitHub workflows stay untouched and do not run. The runner is host-mode (labels ubuntu-latest:host):
+# tools install into the job's own venv, never into the shared runner home.
+#
+# Not a placeholder: pytest exits 5 when it collects nothing, so a repo without tests is RED here.
+# Adapt the install step to the repo's real dependencies.
+
+on:
+  pull_request:
+  # No `push:` -- CI is preventative only, nothing runs after a merge (operator, 2026-09-15).
+  workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install into a job venv
+        run: |
+          python3 -m venv .ci-venv
+          .ci-venv/bin/pip install -q pytest
+          if [ -f requirements.txt ]; then .ci-venv/bin/pip install -q -r requirements.txt; fi
+          if [ -f pyproject.toml ] || [ -f setup.py ]; then .ci-venv/bin/pip install -q -e .; fi
+      - name: pytest
+        run: .ci-venv/bin/python -m pytest

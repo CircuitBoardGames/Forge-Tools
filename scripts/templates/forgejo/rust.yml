@@ -1,0 +1,58 @@
+name: Test
+
+# Forge gate for a Rust repo, committed by `scripts/hub-api.sh repo provision --kind rust`.
+# The repo's branch protection requires `Test /*`, the contexts this workflow registers,
+# so renaming `name:` above without re-running provision blocks every merge.
+#
+# A present `.forgejo/workflows` is read INSTEAD of `.github/workflows`, so on a fork upstream's
+# GitHub workflows stay untouched and do not run.
+#
+# THE RUNNER IS HOST-MODE AND ITS HOME IS SHARED BY EVERY JOB. Two jobs installing a toolchain at
+# once corrupted `~/.rustup` (measured 2026-09-15: `detected conflict: 'bin/cargo'`), so the
+# install holds a flock and is skipped when the toolchain already works. No dtolnay/rust-toolchain:
+# this forge resolves bare `uses:` through data.forgejo.org, which does not mirror it. cmake is not on
+# the host; a venv `pip install cmake` provides it for crates that build C dependencies.
+#
+# NO SHARED CARGO_TARGET_DIR -- each job builds into its own workspace's `target/`, and a full rebuild
+# per job is the price. Measured on a Rust fork (2026-09-15): two jobs on
+# different commits shared one target dir, cargo's freshness check trusted dep-info paths from the
+# OTHER job's still-present checkout, and the PR job "compiled" in 1.3s into a test binary holding
+# none of the PR's code (new test name: 0 hits in the binary; control: 3). A stale-code false green,
+# possible sequentially too. The rustup toolchain and ~/.cargo/registry stay shared; that is safe.
+
+on:
+  pull_request:
+  # No `push:` -- CI is preventative only, nothing runs after a merge (operator, 2026-09-15).
+  workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: cargo test
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain (serialised) and cmake
+        run: |
+          mkdir -p "$HOME/.rustup"
+          flock "$HOME/.rustup/.ci-install.lock" sh -c '
+            if [ ! -x "$HOME/.cargo/bin/rustup" ]; then
+              curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+            fi
+            "$HOME/.cargo/bin/rustup" run stable cargo --version >/dev/null 2>&1 \
+              || "$HOME/.cargo/bin/rustup" toolchain install stable --profile minimal
+            [ -x "$HOME/.cache/ci-cmake/bin/cmake" ] || {
+              python3 -m venv "$HOME/.cache/ci-cmake" && "$HOME/.cache/ci-cmake/bin/pip" install -q cmake
+            }
+          '
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cache/ci-cmake/bin" >> "$GITHUB_PATH"
+      - name: cargo test
+        run: cargo test --workspace

@@ -1,0 +1,70 @@
+# Forge-Tools site configuration.
+#
+# Every key is an environment variable, FORGE_TOOLS_<KEY>. Any of them may instead be set here, in
+#     ${FORGE_TOOLS_CONFIG:-${XDG_CONFIG_HOME:-~/.config}/forge-tools/config}
+# as plain KEY=VALUE lines. The ENVIRONMENT WINS over this file. The file is parsed, never sourced:
+# values are literal (one pair of surrounding quotes and a leading `~/` are understood), `#` starts a
+# comment line, and a name that is not FORGE_TOOLS_<A-Z0-9_> is reported and skipped.
+# Readers: scripts/ft-config.sh (shell) and scripts/ft_config.py (Python).
+#
+# Older per-script variables still work and take precedence over the key they map to; they are
+# named beside each key below.
+
+# --- Required: no neutral default exists. A command that needs one and finds it unset refuses,
+# --- naming the key and this file.
+
+# The forge's base URL. Every API call needs it. (HUB_URL overrides.)
+#FORGE_TOOLS_FORGE_URL=https://forge.example.org
+
+# The forge owner (user or org) of the repo a command acts on by default. Needed only when
+# FORGE_TOOLS_REPO is unset; the repo is then <owner>/<the name FORGE_TOOLS_REMOTE's URL ends in>.
+#FORGE_TOOLS_OWNER=example-org
+
+# --- Optional.
+
+# owner/name of the consumer repo (doctor, handoff's wiki, pr-queue). Default: see FORGE_TOOLS_OWNER.
+# (DOCTOR_REPO, HANDOFF_REPO, PR_QUEUE_REPO, PR_QUEUE_TICKET_REPO override.)
+#FORGE_TOOLS_REPO=example-org/example-repo
+
+# Extra host names that mean "this forge" when read out of a git remote URL, space-separated (an ssh
+# alias, a second address). The host of FORGE_TOOLS_FORGE_URL always counts. Default: none.
+#FORGE_TOOLS_FORGE_HOSTS=
+
+# The git remote that points at the forge. Default: origin.
+# (DOCTOR_REMOTE, PR_QUEUE_REMOTE, the pruner's HUB_REMOTE and WORKTREE_REAP_MAIN override.)
+#FORGE_TOOLS_REMOTE=origin
+
+# The consumer checkout the queue and doctor act on. Default: the git top level of the cwd.
+# (PR_QUEUE_HUB, DOCTOR_HUB override.)
+#FORGE_TOOLS_CHECKOUT=
+
+# Prefix of pr-queue's per-run scratch worktrees (<prefix>-<pid>). Default:
+# ${XDG_CACHE_HOME:-~/.cache}/forge-tools/merge. (PR_QUEUE_WT_BASE, LIVE_DRAINS_WT_BASE override.)
+#FORGE_TOOLS_MERGE_SCRATCH_PREFIX=
+
+# Directory holding the forge credentials: hub-api.conf (the API token), hub-access.conf (an
+# optional Cloudflare Access pair) and gate-watch.secret. Default: ${XDG_CONFIG_HOME:-~/.config}/forge-tools.
+# (HUB_API_CONFIG, HUB_ACCESS_CONFIG, GATE_WATCH_SECRET_FILE override per file.)
+#FORGE_TOOLS_CREDENTIALS_DIR=
+
+# Wiki page titles, comma-separated, that the harness injects at session start: handoff.sh publish
+# holds them to the injector's size ceiling (read from HANDOFF_CACHE_HOOK). Default: none -- and
+# publish says so while this is unset. Set it empty to state that nothing is injected.
+#FORGE_TOOLS_INJECTED_PAGES=
+
+# Wiki page titles, comma-separated, whose backticked `/trigger`s must resolve to an installed skill
+# or command before handoff.sh publishes them. Default: none.
+#FORGE_TOOLS_TRIGGER_PAGES=
+
+# Forge users allowed to push to the default branch that `hub-api repo provision|create|fork`
+# protects, space-separated. Required by those three verbs; no default.
+#FORGE_TOOLS_PUSH_WHITELIST=
+
+# The fallow action ref bootstrap-target-repo.sh writes into a target's fallow.yml. Default: the
+# template's pinned public source (the Fallow-Forgejo action on GitHub).
+#FORGE_TOOLS_FALLOW_ACTION=
+
+# Also read (documented where they are used): FORGE_TOOLS_SKILL_ROOTS, FORGE_TOOLS_COMMAND_ROOTS,
+# FORGE_TOOLS_TRIGGER_EXCEPTIONS (handoff.sh), FORGE_TOOLS_AGENT_COMMS (scripts/agent_comms.py).
+# FORGE_TOOLS_SESSION_ID and FORGE_TOOLS_WAKE_PID are per-session and come from a harness adapter,
+# never from this file.
