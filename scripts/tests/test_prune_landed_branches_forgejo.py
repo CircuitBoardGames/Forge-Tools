@@ -111,6 +111,16 @@ def test_a_merged_branch_is_deleted(tmp_path):
     assert "landed" in out, "the deletion must be reported, not done silently"
 
 
+def test_the_installed_command_name_fires_too(tmp_path):
+    """`hub-api` is what a caller types once the command is installed; matched on basename, so the
+    hook must fire for it as it does for `hub-api.sh`, or installing the command silently stops
+    every prune."""
+    repo = make_repo(tmp_path, ["landed"])
+    api, _ = make_hub_api(tmp_path, [pr(42, merged=True, ref="landed", label="landed")])
+    run(repo, api, command="hub-api pr merge acme/app 42 'title (#42)'")
+    assert "landed" not in branches(repo), "`hub-api pr merge` must trigger the prune"
+
+
 def test_a_branch_with_no_merged_pr_survives(tmp_path):
     """Same repo, same command -- only hub's answer differs. This is the differential."""
     repo = make_repo(tmp_path, ["landed"])
@@ -737,3 +747,24 @@ def test_an_unimportable_parser_refuses_LOUDLY(tmp_path):
     assert not log.exists(), "it must not prune on an unparsed command"
     assert "landed" in branches(repo)
     assert "bash_cmd_parse" in r.stdout, f"the refusal must say why: {r.stdout!r}"
+
+
+def test_a_hand_run_resolves_its_sibling_client_without_hub_api_sh(tmp_path):
+    """`pr-queue prune-merged` runs this script by hand, with no HUB_API_SH: the client is then its
+    sibling hub-api.sh, found through SELF_DIR. SELF_DIR used to be set only in hook mode, so under
+    `set -u` every hand run died at that line before pruning anything -- and every other test here
+    sets HUB_API_SH, which short-circuits the expansion and hid it."""
+    repo = make_repo(tmp_path, ["landed"])
+    api, _ = make_hub_api(tmp_path, [pr(42, merged=True, ref="landed", label="landed")])
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    for name in ("prune-landed-branches-forgejo.sh", "ft-config.sh", "bash_cmd_parse.py"):
+        (tools / name).write_bytes((HOOK.parent / name).read_bytes())
+    (tools / "hub-api.sh").write_bytes(api.read_bytes())
+    (tools / "hub-api.sh").chmod(0o755)
+    env = {k: v for k, v in {**os.environ, **_WAS_DEFAULT}.items() if k != "HUB_API_SH"}
+    r = subprocess.run(["sh", str(tools / "prune-landed-branches-forgejo.sh"), "--dry-run"], cwd=repo,
+                       text=True, capture_output=True, env=env)
+    assert "parameter not set" not in r.stderr, r.stderr
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "landed" in r.stdout + r.stderr, "the sibling client was never asked"

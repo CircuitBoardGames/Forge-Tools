@@ -43,6 +43,9 @@ case "$1" in
   */pulls/*/merge)
       n=${1##*/pulls/}; n=${n%%/*}
       printf '%s\n' "$n $*" >> "$d/marks.log"
+      # STUB_MANUAL_DEAD_CLIENT: the client dies before any HTTP, on stderr, with no http= line
+      # (2026-09-26: a credential helper naming a deleted script).
+      if [ -n "${STUB_MANUAL_DEAD_CLIENT:-}" ]; then echo "git: 'credential-/gone/hub-api.sh' is not a git command" >&2; exit 1; fi
       if [ -n "${STUB_MANUAL_405:-}" ]; then printf '{"message":"manually-merged is not an allowed merge style for this repository"}\nmarked: http=405\n'
       else printf '{}\nmarked: http=200\n'; fi ;;
   */pulls\?state=open*)
@@ -524,6 +527,16 @@ def test_a_refused_manual_mark_leaves_the_landing_and_says_which_setting(world):
     assert subjects_on_main(world) == ["feat3", "feat2", "feat1", "base"], "the landing happened before the marks"
     assert "allow_manual_merge" in r.stdout and "NOT marked merged" in r.stdout, r.stdout
     assert not [l for l in (world["d"] / "stub.log").read_text().splitlines() if "--delete" in l], "unmarked members' branches must not be deleted"
+
+
+def test_a_mark_that_dies_before_http_prints_the_clients_own_words(world):
+    """The third `_refusal_detail` site. `mark_manually_merged` sent stderr to /dev/null, so a client
+    that failed before any HTTP logged `http=unreadable:` and nothing after the colon."""
+    world["env"]["STUB_MANUAL_DEAD_CLIENT"] = "1"
+    r = drain(world, "--batch")
+    assert r.returncode != 0
+    assert "http=unreadable" in r.stdout and "NOT marked merged" in r.stdout, r.stdout
+    assert "credential-/gone/hub-api.sh" in r.stdout, r.stdout
 
 
 def test_dry_run_batch_reports_the_batch_and_pushes_nothing(world):
@@ -1060,6 +1073,44 @@ def test_a_drain_whose_pr_queue_sh_is_unchanged_lands_both__control(world):
     out = r.stdout + r.stderr
     assert subjects_on_main(world)[:2] == ["feat2", "feat1"], out
     assert "changed since this run started" not in out, out
+
+
+def _installed_tools(tmp_path, moved):
+    """Forge-Tools as an INSTALLED checkout: a clone of a bare upstream holding this scripts/ tree.
+    `moved` pushes a newer pr-queue.sh to that upstream from another clone, as a merge would."""
+    import shutil
+    up = tmp_path / "tools.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(up)], check=True)
+    seed = tmp_path / "tools-seed"
+    shutil.copytree(REPO_ROOT / "scripts", seed / "scripts", ignore=shutil.ignore_patterns("tests", "__pycache__"))
+    subprocess.run(["git", "init", "-q", "-b", "main", str(seed)], check=True)
+    git(seed, "add", "-A"); git(seed, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "tools")
+    git(seed, "push", "-q", str(up), "main")
+    tools = tmp_path / "tools"
+    subprocess.run(["git", "clone", "-q", str(up), str(tools)], check=True)
+    if moved:
+        with open(seed / "scripts" / "pr-queue.sh", "a") as f:
+            f.write("# a newer queue\n")
+        git(seed, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qam", "newer")
+        git(seed, "push", "-q", str(up), "main")
+    return tools / "scripts" / "pr-queue.sh"
+
+
+@pytest.mark.parametrize("moved", [True, False])
+def test_an_installed_queue_stops_when_its_own_checkouts_upstream_moved(world, tmp_path, moved):
+    """The consumer carries no pr-queue.sh (the installed layout), so main's copy cannot be the
+    reference; the run's own checkout's upstream is. Moved: it lands nothing and says why. The
+    control (not moved) lands both, or a check that stopped every run would pass the first arm."""
+    queue(world, 41, 42)
+    q = _installed_tools(tmp_path, moved)
+    r = subprocess.run(["sh", str(q), "drain"], capture_output=True, text=True, env=world["env"], timeout=180)
+    out = r.stdout + r.stderr
+    if moved:
+        assert "changed since this run started" in out, out
+        assert r.returncode == 2 and "feat1" not in subjects_on_main(world), out
+    else:
+        assert "changed since this run started" not in out, out
+        assert subjects_on_main(world)[:2] == ["feat2", "feat1"], out
 
 
 # --- a refused update-before-gate skips its PR and the drain carries on ----------------

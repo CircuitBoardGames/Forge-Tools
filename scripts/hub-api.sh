@@ -1207,7 +1207,7 @@ pr)
                 printf '%s\n' "$_aw_watch" >&2
                 printf '%s\n' "That watch outlives this session and peer-messages it the verdict, so waiting here
 costs a turn and buys nothing. GO IDLE -- you will be woken.
-  see the watch : python3 scripts/gate-watch.py list
+  see the watch : gate-watch list
   one reading   : $0 pr checks $repo $sha
   block anyway  : HUB_API_AWAIT_BLOCKING=1 (for a context with no session to wake)" >&2
                 exit 4
@@ -1500,7 +1500,7 @@ except Exception:
             if [ -n "${HUB_API_NO_CI_REASON:-}" ]; then
                 printf '%s\n' "hub-api: NO CI OVERRIDDEN -- $repo reads '$ci_state' for workflows on $base and $head, and the PR opens because HUB_API_NO_CI_REASON says: $HUB_API_NO_CI_REASON" >&2
             elif [ "$ci_state" = none ]; then
-                refuse "pr create: $repo has no CI -- no workflow file in the directory the forge runs (the first of .forgejo, .gitea or .github/workflows that exists) on '$base' or '$head', so the forge would register no checks and this PR would merge ungated. Add a workflow to the branch first (scripts/bootstrap-target-repo.sh), or open it anyway with HUB_API_NO_CI_REASON=\"<why>\"."
+                refuse "pr create: $repo has no CI -- no workflow file in the directory the forge runs (the first of .forgejo, .gitea or .github/workflows that exists) on '$base' or '$head', so the forge would register no checks and this PR would merge ungated. Add a workflow to the branch first (bootstrap-target-repo), or open it anyway with HUB_API_NO_CI_REASON=\"<why>\"."
             else
                 refuse "pr create: cannot tell whether $repo has CI -- a workflow listing could not be read, and an unread listing is not a present workflow. Retry, or HUB_API_NO_CI_REASON=\"<why>\" opens it anyway."
             fi
@@ -1637,7 +1637,7 @@ raise SystemExit(0 if any(l.get("name") == sys.argv[1] for l in ls) else 1)' "$s
                 printf '%s\n' "hub-api: #$pr_num NOT watched -- no FORGE_TOOLS_WAKE_PID, so there is no session to wake. Wait with: $0 pr await $repo $head_remote" >&2
             elif ! _gw_out=$(python3 "$(dirname "$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")")/gate-watch.py" \
                     register "$repo" "$head_remote" "PR #$pr_num" 2>&1); then
-                printf '%s\n' "hub-api: #$pr_num NOT watched -- gate-watch register failed: $(printf '%s' "$_gw_out" | tail -1). Repair: python3 scripts/gate-watch.py register $repo $head_remote" >&2
+                printf '%s\n' "hub-api: #$pr_num NOT watched -- gate-watch register failed: $(printf '%s' "$_gw_out" | tail -1). Repair: gate-watch register $repo $head_remote" >&2
             else
                 printf '%s\n' "hub-api: #$pr_num is watched by gate-watch -- this session is peer-messaged on its verdict; go idle, do not poll." >&2
             fi
@@ -2168,7 +2168,7 @@ else:
             if [ -n "${HUB_API_FREEZE_OVERRIDE:-}" ]; then
                 printf '%s\n' "hub-api: FREEZE OVERRIDDEN -- the queue freeze on $repo reads '$freeze_state', and pr merge #$num proceeds because HUB_API_FREEZE_OVERRIDE says: $HUB_API_FREEZE_OVERRIDE" >&2
             elif [ "$freeze_state" = frozen ]; then
-                refuse "pr merge #$num -- the queue is FROZEN: wiki page \"Queue Freeze\" exists on $repo. Lift it with pr-queue.sh thaw, or merge deliberately with HUB_API_FREEZE_OVERRIDE=\"<reason>\"."
+                refuse "pr merge #$num -- the queue is FROZEN: wiki page \"Queue Freeze\" exists on $repo. Lift it with pr-queue thaw, or merge deliberately with HUB_API_FREEZE_OVERRIDE=\"<reason>\"."
             else
                 refuse "pr merge #$num -- cannot tell whether the queue is frozen: the wiki listing of $repo could not be read, and an unread listing is not an empty one. HUB_API_FREEZE_OVERRIDE=\"<reason>\" merges anyway."
             fi
@@ -2760,7 +2760,7 @@ def routing_refusal(mapno):
               "  (open maps, from the forge; the listing caps at 50)",
               "  If none of them fits, the ticket is not map-bound: use `issue file`.",
               "",
-              "  Then:  hub-api.sh issue child-create <owner/repo> %d <title> <body> [type] \\" % mapno,
+              "  Then:  hub-api issue child-create <owner/repo> %d <title> <body> [type] \\" % mapno,
               "             --because \"serves this map's destination by ...\""]
     die("\n".join(lines))
 
@@ -2917,7 +2917,7 @@ def claim_state(n):
 
 def need(k, usage):
     if len(args) < k:
-        bail("usage: hub-api.sh issue " + usage)
+        bail("usage: hub-api issue " + usage)
     return args
 
 
@@ -3103,7 +3103,7 @@ elif verb == "adopt":
     other = [l for l in cur if l.startswith("wayfinder:map-") and l != "wayfinder:map-%d" % dest_map]
     if other:
         die("#%d is already a child of %s -- re-parenting is `move`'s job, not `adopt`'s.\n"
-            "  hub-api.sh issue move %s %d %d --because \"...\"" % (n, ", ".join(sorted(other)), repo, n, dest_map))
+            "  hub-api issue move %s %d %d --because \"...\"" % (n, ", ".join(sorted(other)), repo, n, dest_map))
 
     kind = args[2] if len(args) > 2 and args[2] else "task"
     did, had = [], []
@@ -3706,8 +3706,8 @@ elif verb == "file":
              "  label -- so this would file a real, numbered ticket that no map lists and no\n"
              "  frontier ever surfaces. Measured: four of eight tickets in one evening.\n"
              "\n"
-             "  Map-bound work:  hub-api.sh issue child-create <owner/repo> <map#> <title> [body]\n"
-             "  Genuinely none:  hub-api.sh issue file <owner/repo> --no-map <title> [body]\n"
+             "  Map-bound work:  hub-api issue child-create <owner/repo> <map#> <title> [body]\n"
+             "  Genuinely none:  hub-api issue file <owner/repo> --no-map <title> [body]\n"
              "\n"
              "  The second is a legitimate thing to file. It just has to be said rather than\n"
              "  arrived at by leaving an argument out.")

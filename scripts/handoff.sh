@@ -123,7 +123,7 @@ command -v python3 >/dev/null 2>&1 || {
 
 usage() {
     cat >&2 <<EOF
-usage: handoff.sh <verb>
+usage: handoff <verb>
 
   publish [file]   upload <file> (default $FILE_DEFAULT) to wiki page "$PAGE",
                    then READ IT BACK and compare sha256. Non-zero unless they match.
@@ -481,7 +481,7 @@ PY
             if CREATE_OUT=$(printf '%s' "$BODY" | sh "$API" "/api/v1/repos/$REPO/wiki/new" -X POST --json @- 2>&1); then
                 echo "$SLOT"
                 echo "  claimed by creating \"Handoff $SLOT\" (attempt $_attempt)." >&2
-                echo "  Free it by deleting that page: handoff.sh delete, with HANDOFF_PAGE set." >&2
+                echo "  Free it by deleting that page: handoff delete, with HANDOFF_PAGE set." >&2
                 # THE CLAIM IS PROVISIONAL UNTIL THE HOLDER STAMPS IT. The page says so
                 # in its own text, and nothing told the claimer what to do about it. A hand-claimed
                 # slot carries only the space-keyed line above; `- holder-session:` -- the key every
@@ -516,7 +516,7 @@ PY
             exit 1
         done
         echo "handoff: could not claim a slot in 5 attempts -- another claimer won the number every" >&2
-        echo "  time (each failure above left a page). Run 'handoff.sh slot list' and look before retrying." >&2
+        echo "  time (each failure above left a page). Run 'handoff slot list' and look before retrying." >&2
         exit 1 ;;
     list)
         PREFIX="${3:-}"
@@ -1226,7 +1226,7 @@ PY
             else echo "  UNMEASURED: git worktree list failed"; fi
             echo "branches (every listed worktree):"
             if [ -n "$_branches" ]; then printf '%s\n' "$_branches"; else echo "  UNMEASURED: could not read the worktree list"; fi
-            echo "measured-by: handoff.sh publish, not the author. Where the prose above disagrees with"
+            echo "measured-by: handoff publish, not the author. Where the prose above disagrees with"
             echo "  these lines, the prose is the claim to distrust."
             echo "<!-- handoff-measured:end -->"
         } > "$_mtmp"
@@ -1732,7 +1732,7 @@ url)
         echo "         is not evidence the page is missing." >&2
         exit 2
     else
-        echo "handoff: no wiki page titled \"$PAGE\" on $REPO yet -- run \`handoff.sh publish\`" >&2
+        echo "handoff: no wiki page titled \"$PAGE\" on $REPO yet -- run \`handoff publish\`" >&2
         exit 1
     fi
     ;;

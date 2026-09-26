@@ -182,7 +182,7 @@ print(",".join(ok) if ok else "none")
                 case "$approved" in
                     "?") unchecked "queued #$n wears $HELD_LABEL but its reviews could not be read" ;;
                     none) say "held: #$n wears $HELD_LABEL and no approving review has landed (the hold is doing its job)" ;;
-                    *) finding "queued #$n wears $HELD_LABEL but an APPROVED review by $approved already landed -- the hold is stale: sh scripts/pr-queue.sh approve $n" ;;
+                    *) finding "queued #$n wears $HELD_LABEL but an APPROVED review by $approved already landed -- the hold is stale: pr-queue approve $n" ;;
                 esac ;;
         esac
         case "$flags" in

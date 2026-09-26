@@ -102,12 +102,12 @@ if [ -n "$FORGE_REPO" ]; then
   "$HUB_API" repo provision "$FORGE_REPO" --kind node | sed 's/^/   /'
   if [ "$NO_FALLOW" = false ]; then
     say "   Fallow /* becomes a required context once fallow.yml is on the default branch:"
-    say "   re-run scripts/hub-api.sh repo provision $FORGE_REPO --kind node after this branch lands."
+    say "   re-run hub-api repo provision $FORGE_REPO --kind node after this branch lands."
   fi
   say ""
 else
   say "3. forge provisioning — NOT applied (no --forge-repo owner/name). The forge will accept a red"
-  say "   or stale merge until you run: scripts/hub-api.sh repo provision <owner/name> --kind node"
+  say "   or stale merge until you run: hub-api repo provision <owner/name> --kind node"
   say ""
 fi
 say ""

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """A forge-gate watcher that OUTLIVES the session that asked.
 
-    gate-watch.py register <owner/repo> <full-40-sha> [note ...]   from inside a session
-    gate-watch.py adopt <predecessor-pid|predecessor-session-id>    from a successor: take over its PR subscriptions
-    gate-watch.py tick                                              from the systemd timer (fallback)
-    gate-watch.py serve                                             the webhook receiver, a systemd service
-    gate-watch.py hook-install <owner/repo>                         mint the secret, register the forge webhook, prove delivery
-    gate-watch.py list                                              open watches, undelivered verdicts
+    gate-watch register <owner/repo> <full-40-sha> [note ...]   from inside a session
+    gate-watch adopt <predecessor-pid|predecessor-session-id>    from a successor: take over its PR subscriptions
+    gate-watch tick                                              from the systemd timer (fallback)
+    gate-watch serve                                             the webhook receiver, a systemd service
+    gate-watch hook-install <owner/repo>                         mint the secret, register the forge webhook, prove delivery
+    gate-watch list                                              open watches, undelivered verdicts
 
 WHY. Observing the forge used to need a live turn: a session pinned itself to a sleep-and-poll loop
 for 8 minutes per gate and burned its 5h window doing nothing (measured: 37 minutes
@@ -26,7 +26,7 @@ THE SHAPE, and the four decisions the ticket left open, as taken here:
    Liveness is /proc comm AND process start time (stat field 22), the same test `_wake` makes, so a
    recycled pid cannot receive a message meant for the session it replaced.
 3. REPORT-ONLY. On a verdict the watcher peer-messages the requester and stops. It never merges,
-   never approves, never re-runs anything: landing is `pr-queue.sh drain`'s job, and the session
+   never approves, never re-runs anything: landing is `pr-queue drain`'s job, and the session
    that asked re-measures before it acts (the message says so). A watcher that acts would inherit
    the unresolved attribution ceilings of acting on someone else's behalf; one that only wakes a session inherits none.
 4. One `pr checks` per open watch per tick, through `pr await <repo> <sha> 1 0` so the exit-code
@@ -411,7 +411,7 @@ def deliver(w, text):
 
 
 def close(w, event, verdict, body):
-    text = "%s %s\n\n%s\n\nThis watcher only reports. Re-measure before acting:\n  sh scripts/hub-api.sh pr checks %s %s" % (
+    text = "%s %s\n\n%s\n\nThis watcher only reports. Re-measure before acting:\n  hub-api pr checks %s %s" % (
         PREFIX, verdict, body, w["repo"], w["sha"])
     ok, why, alive = deliver(w, text)
     # A LIVE REQUESTER WHOSE DELIVERY FAILED IS RETRIED, NOT CLOSED. Point 2 above keeps
@@ -673,7 +673,7 @@ def main():
         return serve()
     if verb == "hook-install":
         return hook_install(sys.argv[2:])
-    die("usage: gate-watch.py register <owner/repo> <full-sha> [note] | subscribe <owner/repo> <pr> | adopt <predecessor-pid|session-id> | tick | serve | hook-install <owner/repo> | list")
+    die("usage: gate-watch register <owner/repo> <full-sha> [note] | subscribe <owner/repo> <pr> | adopt <predecessor-pid|session-id> | tick | serve | hook-install <owner/repo> | list")
 
 
 if __name__ == "__main__":

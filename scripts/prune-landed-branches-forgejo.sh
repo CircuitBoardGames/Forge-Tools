@@ -106,7 +106,7 @@ BRANCHES="$*"   # explicit branches to judge; empty means every local branch
 # documented order does not. The failure here was silence, not strictness.
 for _arg in "$@"; do
     case "$_arg" in
-        -*) echo "$SELF option '$_arg' must come BEFORE the branch names: pr-queue.sh prune-merged [--dry-run|--delete] [branch...]" >&2
+        -*) echo "$SELF option '$_arg' must come BEFORE the branch names: pr-queue prune-merged [--dry-run|--delete] [branch...]" >&2
             exit 2 ;;
     esac
 done
@@ -131,10 +131,13 @@ bail() {
 #
 # Hook mode only. A hand invocation has no tool-call JSON on stdin, and `cat` would BLOCK on a
 # terminal -- the mode was asked for explicitly, so there is nothing to match on.
+# This script's REAL directory: its siblings live there even when it is reached through a symlink.
+# Set in EVERY mode: `pr-queue prune-merged` runs this by hand, and under `set -u` an unset one
+# killed that path before it pruned anything.
+SELF_DIR=$(dirname "$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")")
+
 if [ "$MODE" = hook ]; then
 INPUT="$(cat 2>/dev/null || true)"
-# This script's REAL directory: its siblings live there even when it is reached through a symlink.
-SELF_DIR=$(dirname "$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")")
 
 # The Forgejo PR-merge moment. There is no `gh` here: Forgejo ships no official client CLI, so
 # `hub-api.sh pr merge` IS the command a session types, and it is what this couples to.
@@ -162,7 +165,7 @@ try:
 except Exception:
     print("NOPARSE")
     raise SystemExit
-if bash_cmd_parse.invokes(cmd, "hub-api.sh", "pr", "merge"):
+if bash_cmd_parse.invokes(cmd, "hub-api", "pr", "merge") or bash_cmd_parse.invokes(cmd, "hub-api.sh", "pr", "merge"):
     print("FIRE")' 2>/dev/null || true)"
 case "$GATE" in
     FIRE) ;;

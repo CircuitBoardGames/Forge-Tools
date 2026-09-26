@@ -337,7 +337,7 @@ refuse_if_frozen() {
         1) return 0 ;;
         0) log "REFUSING: $1 -- the queue is FROZEN: wiki page \"$FREEZE_PAGE\" exists on $REPO."
            printf '%s\n' "$_fz_text" | sed 's/^/  | /'
-           log "  Nothing merges while it exists. Lift it with: pr-queue.sh thaw"
+           log "  Nothing merges while it exists. Lift it with: pr-queue thaw"
            exit 2 ;;
         *) log "REFUSING: $1 -- cannot tell whether the queue is frozen: $REPO's wiki could not be read."
            log "  An unread listing is not an empty one, so this is NOT 'not frozen'."
@@ -504,7 +504,7 @@ sys.exit(found)
            log "  close them, so nothing but a person will. If this PR finished one:"
            printf '%s\n' "$_nw" | while IFS="$(printf '\t')" read -r _nwn _nwmap _nwtitle; do
                log "    #$_nwn  $_nwtitle"
-               log "      sh scripts/hub-api.sh issue resolve $TICKET_REPO $_nwn $_nwmap \"<what landed, and how it was verified>\""
+               log "      hub-api issue resolve $TICKET_REPO $_nwn $_nwmap \"<what landed, and how it was verified>\""
            done
            log "  (the map number is off each ticket's own wayfinder:map-N label, so those lines run"
            log "   as printed. Listed because this PR names them as its SUBJECT -- a (#N) cite or a"
@@ -520,8 +520,8 @@ sys.exit(found)
 if [ "${1:-}" = "freeze" ]; then
     shift
     _fz_reason=${1:-}
-    { [ -n "$_fz_reason" ] && [ "$#" -le 2 ]; } || { log "usage: pr-queue.sh freeze \"<reason>\" [\"<until>\"]"; exit 2; }
-    _fz_until=${2:-"until someone runs pr-queue.sh thaw"}
+    { [ -n "$_fz_reason" ] && [ "$#" -le 2 ]; } || { log "usage: pr-queue freeze \"<reason>\" [\"<until>\"]"; exit 2; }
+    _fz_until=${2:-"until someone runs pr-queue thaw"}
     _fz_text=$(freeze_state); _fz_rc=$?
     case "$_fz_rc" in
         1) : ;;
@@ -534,10 +534,10 @@ if [ "${1:-}" = "freeze" ]; then
     _fz_body=$(python3 -c '
 import base64, datetime, json, sys
 page, reason, until, who = sys.argv[1:5]
-text = ("**The PR queue is FROZEN.** `pr-queue.sh approve`, `drain` and `merge-requested` refuse "
+text = ("**The PR queue is FROZEN.** `pr-queue approve`, `drain` and `merge-requested` refuse "
         "while this page exists.\n\n"
         "- Why: %s\n- Until: %s\n- Frozen by: %s\n- Frozen at: %s\n\n"
-        "Lift it with `pr-queue.sh thaw`, which deletes this page and confirms it is gone.\n"
+        "Lift it with `pr-queue thaw`, which deletes this page and confirms it is gone.\n"
         % (reason, until, who, datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")))
 print(json.dumps({"title": page, "content_base64": base64.b64encode(text.encode()).decode(),
                   "message": "queue: freeze"}))
@@ -1557,9 +1557,18 @@ _landed() {
 # un-drafted (`restore_drafts`) and the detached run messages its session. Only a PROVEN change
 # stops: an unreadable blob continues, as every run did before this, since the launch guard
 # already vouched for the code this process started with.
+#
+# WHERE "MAIN" IS. When the consumer carries its own scripts/pr-queue.sh (the layout this was written
+# for), its main is the reference. An INSTALLED Forge-Tools runs from its own checkout and the
+# consumer carries none, so the reference is that checkout's upstream -- without this second arm the
+# check found nothing to compare and passed every run, however far main had moved.
 _stop_if_code_superseded() {
     git -C "$HUB" fetch -q "$FT_REMOTE" 2>/dev/null
-    _cur_blob=$(git -C "$HUB" rev-parse -q --verify "$FT_REMOTE/main:scripts/pr-queue.sh" 2>/dev/null) || return 0  # no main copy to compare (a test world, another repo): unproven, so continue
+    if ! _cur_blob=$(git -C "$HUB" rev-parse -q --verify "$FT_REMOTE/main:scripts/pr-queue.sh" 2>/dev/null); then
+        _self_top=$(git -C "$SELF_DIR" rev-parse --show-toplevel 2>/dev/null) || return 0  # not a checkout: unproven, so continue
+        git -C "$_self_top" fetch -q 2>/dev/null
+        _cur_blob=$(git -C "$_self_top" rev-parse -q --verify "@{upstream}:${SELF#"$_self_top"/}" 2>/dev/null) || return 0  # no upstream: unproven, so continue
+    fi
     _run_blob=$(git hash-object "$SELF" 2>/dev/null) || return 0  # cannot hash this run's own file: unproven, so continue
     [ -n "$_cur_blob" ] && [ -n "$_run_blob" ] && [ "$_cur_blob" != "$_run_blob" ] || return 0  # the same code main carries: nothing superseded
     log "STOPPING: scripts/pr-queue.sh on $FT_REMOTE/main changed since this run started ($_run_blob -> $_cur_blob)."
@@ -1708,7 +1717,7 @@ label_held() {
     # nobody ever acts on, because acting on it means going and finding out how.
     [ -n "$_lid" ] || {
         log "  '$HELD_LABEL' not found in $REPO -- the hold stands, unlabelled. Create it with:"
-        log "    hub-api.sh /api/v1/repos/$REPO/labels -X POST -H 'Content-Type: application/json' \\"
+        log "    hub-api /api/v1/repos/$REPO/labels -X POST -H 'Content-Type: application/json' \\"
         log "      --data-binary '{\"name\":\"$HELD_LABEL\",\"color\":\"#fbca04\"}'"
         log "  or set PR_QUEUE_LABEL=0 to stop asking."
         return 0
@@ -1726,7 +1735,7 @@ label_held() {
 unlabel_held() { unlabel_one "$1" "$HELD_LABEL"; }
 
 
-# delete_merged_branch <ref> -- retire a branch hub has just told us landed.
+# delete_merged_branch <ref> [pr] -- retire a branch hub has just told us landed.
 #
 # LOCAL goes through `prune-landed-branches-forgejo.sh`, which already asks hub's
 # `pulls?state=closed`+`merged` around three measured Forgejo fail-opens. No second
@@ -1760,7 +1769,7 @@ unlabel_held() { unlabel_one "$1" "$HELD_LABEL"; }
 # The queue's own `$WT` is added `--detach`, so it holds no branch and cannot block a delete of
 # the branch it just merged.
 delete_merged_branch() {
-    _dref=${1:-}
+    _dref=${1:-}; _dpr=${2:-}
     [ -n "$_dref" ] || { log "  no branch name recorded -- nothing deleted"; return 0; }
     _prune="$TOOLS_DIR/prune-landed-branches-forgejo.sh"
     if [ -x "$_prune" ]; then
@@ -1779,7 +1788,9 @@ delete_merged_branch() {
         # something to do -- but it was reported only into this run's log, which belongs to whoever
         # drained. The one session that can release the worktree heard nothing, so four merged
         # branches survived on hub on 2026-09-19/20 and were cleaned up by hand or not at all.
-        _notify_owner "$_dref" "merged, but its remote branch was NOT deleted: your worktree still has it checked out. Release it and delete the branch."
+        # The PR number reaches the subscription arm: an author working its worktree by per-command
+        # `cd` has no cwd in it, and without the number resolved to nobody (measured 2026-09-26 on a queue-landed PR).
+        _notify_owner "$_dref" "merged, but its remote branch was NOT deleted: your worktree still has it checked out. Release it and delete the branch." "$_dpr"
         return 0
     fi
     if git push "$REMOTE" --delete "$_dref" -q 2>/dev/null; then
@@ -1809,7 +1820,7 @@ _landed_elsewhere() {
     log "  #$1 is ALREADY MERGED, and not by this run -- $3"
     unlabel_held "$1"
     unlabel_one "$1" "$MERGE_LABEL"
-    delete_merged_branch "$2"
+    delete_merged_branch "$2" "$1"
     LANDED_ELSEWHERE=$((LANDED_ELSEWHERE + 1))
     return 0
 }
@@ -1955,7 +1966,7 @@ merge_queued() {
                  # by us, and its prompt belongs to whoever landed it -- covering it here would
                  # print a reminder to a session that did nothing and skip the one that did.
                  name_open_wayfinder_tasks "$_num"
-                 delete_merged_branch "$_ref"
+                 delete_merged_branch "$_ref" "$_num"
                  return 0 ;;
             500)
                 # A fast-forward that cannot fast-forward answers 500 with `DivergingFastForwardOnly`
@@ -1987,7 +1998,7 @@ merge_queued() {
                     log "  #$_num took a 405 and the forge says it is a DRAFT -- NOT repairing:"
                     log "    no update can make a draft mergeable, and main has not moved."
                     log "    Un-draft it, then drain again:"
-                    log "      sh scripts/hub-api.sh \"/api/v1/repos/$REPO/pulls/$_num\" -X PATCH \\"
+                    log "      hub-api \"/api/v1/repos/$REPO/pulls/$_num\" -X PATCH \\"
                     log "        -H 'Content-Type: application/json' -d '{\"title\":\"<title without the $DRAFT_PREFIX prefix>\"}'"
                     return 11
                 fi
@@ -2048,7 +2059,7 @@ print((d.get("base") or {}).get("ref") or "")
     # ponytail: an ABSENT base.ref (the test stubs, never the real forge) proceeds as before; a
     # present one that differs is the case this exists for.
     if [ -n "$_br" ] && [ "$_br" != "$BASE_BRANCH" ]; then
-        log "$_verb: #$_n targets '$_br', not $REPO's landing branch '$BASE_BRANCH' -- REFUSING: the queue measures, updates and lands against '$BASE_BRANCH' only. Check base, head and green checks yourself, then: hub-api.sh pr merge $REPO $_n \"<subject> (#$_n)\" <full-head-sha>"
+        log "$_verb: #$_n targets '$_br', not $REPO's landing branch '$BASE_BRANCH' -- REFUSING: the queue measures, updates and lands against '$BASE_BRANCH' only. Check base, head and green checks yourself, then: hub-api pr merge $REPO $_n \"<subject> (#$_n)\" <full-head-sha>"
         return 7
     fi
 
@@ -2064,7 +2075,7 @@ print((d.get("base") or {}).get("ref") or "")
         [ "$_circ" = 4 ] || _ci=unknown
     done
     if [ "$_ci" = none ]; then
-        log "$_verb: #$_n -- $REPO runs NO CI on $BASE_BRANCH or this head, so no check will ever register; SKIPPING now instead of waiting $WAIT_POLLS polls. Gate it (hub-api.sh repo provision $REPO --kind ...), or land it by hand: hub-api.sh pr merge $REPO $_n '<subject> (#$_n)'"
+        log "$_verb: #$_n -- $REPO runs NO CI on $BASE_BRANCH or this head, so no check will ever register; SKIPPING now instead of waiting $WAIT_POLLS polls. Gate it (hub-api repo provision $REPO --kind ...), or land it by hand: hub-api pr merge $REPO $_n '<subject> (#$_n)'"
         return 7
     fi
 
@@ -2154,7 +2165,7 @@ print((d.get("base") or {}).get("ref") or "")
         case " ${_NOTIFIED_RED:-} " in
             *" $_n "*) : ;;
             *) _NOTIFIED_RED="${_NOTIFIED_RED:-} $_n"
-               _notify_owner "$(_head_ref_of "$_n")" "your PR #$_n is RED on $_sha and the queue is skipping it until you act. The failing job and its assertion: sh scripts/hub-api.sh pr why-red $REPO $_sha" "$_n" ;;
+               _notify_owner "$(_head_ref_of "$_n")" "your PR #$_n is RED on $_sha and the queue is skipping it until you act. The failing job and its assertion: hub-api pr why-red $REPO $_sha" "$_n" ;;
         esac
     fi
     [ "$_wrc" = 0 ] || { APPROVE_REGATES=yes; return 7; }
@@ -2222,8 +2233,8 @@ print((d.get("base") or {}).get("ref") or "")
                    log "  possibly before the hold existed, and its author and the holder can be"
                    log "  different people. Three things release this PR, all of them a human"
                    log "  acting directly or the need for review going away:"
-                   log "    the need changed :  sh scripts/hub-api.sh pr unhold $REPO $_n"
-                   log "    approve it here  :  sh scripts/pr-queue.sh approve $_n"
+                   log "    the need changed :  hub-api pr unhold $REPO $_n"
+                   log "    approve it here  :  pr-queue approve $_n"
                    log "    merge it yourself in the Forgejo web UI"
                fi
                return 9 ;;
@@ -2325,7 +2336,7 @@ except Exception:
 if not isinstance(v, list):
     sys.exit(1)
 print(" ".join("#%s" % p["number"] for p in v if p.get("draft")))') || {
-        log "hand-on: could not read $REPO's open PRs, so whether a draft now waits at the front is UNKNOWN -- run: sh scripts/pr-queue.sh${REPO_ARG:+ --repo $REPO_ARG} drain"
+        log "hand-on: could not read $REPO's open PRs, so whether a draft now waits at the front is UNKNOWN -- run: pr-queue${REPO_ARG:+ --repo $REPO_ARG} drain"
         return 0
     }
     [ -n "$_drafts" ] || return 0  # no draft waits: nothing is parked behind what just landed
@@ -2351,7 +2362,7 @@ if not isinstance(v, list):
 for p in v:
     if p.get("draft"):
         print(p["number"], (p.get("head") or {}).get("ref") or "-")') || {
-        log "approve: could not read $REPO's open PRs, so whether a draft waits is UNKNOWN -- to land any: sh scripts/pr-queue.sh${REPO_ARG:+ --repo $REPO_ARG} drain"
+        log "approve: could not read $REPO's open PRs, so whether a draft waits is UNKNOWN -- to land any: pr-queue${REPO_ARG:+ --repo $REPO_ARG} drain"
         return 0
     }
     [ -n "$_drafts" ] || return 0  # no draft waits: nothing to name, and approve lands only what it was given
@@ -2360,7 +2371,7 @@ for p in v:
         _dp=$(_owner_pid "$_dref")
         log "  #$_dn ($_dref) -- owner: $([ -n "$_dp" ] && echo "pid $_dp$(_seat_of_pid "$_dp")" || echo "not resolved")"
     done
-    log "  to land them: sh scripts/pr-queue.sh${REPO_ARG:+ --repo $REPO_ARG} drain"
+    log "  to land them: pr-queue${REPO_ARG:+ --repo $REPO_ARG} drain"
 }
 
 # --------------------------------------------------------------------------------------
@@ -2429,7 +2440,7 @@ fi
 
 if [ "${1:-}" = "approve" ]; then
     shift
-    : "${1:?approve needs a PR number: pr-queue.sh approve <N> [<N>...]}"
+    : "${1:?approve needs a PR number: pr-queue approve <N> [<N>...]}"
     for _n in "$@"; do
         case "$_n" in ''|*[!0-9]*) log "approve: '$_n' is not a PR number"; exit 1 ;; esac
     done
@@ -2504,7 +2515,7 @@ if [ "${1:-}" = "merge-requested" ]; then
         log "REFUSING: '$MERGE_LABEL' does not resolve in $REPO."
         log "  An unresolvable label makes the listing return EVERY open PR, which this verb"
         log "  would then merge. Create it with:"
-        log "    hub-api.sh /api/v1/repos/$REPO/labels -X POST -H 'Content-Type: application/json' \\"
+        log "    hub-api /api/v1/repos/$REPO/labels -X POST -H 'Content-Type: application/json' \\"
         log "      --data-binary '{\"name\":\"$MERGE_LABEL\",\"color\":\"#0e8a16\"}'"
         exit 2
     }
@@ -2993,15 +3004,19 @@ assemble() {
 # mark_manually_merged <num> <sha> -- tell the forge a member landed, naming its replayed tip.
 mark_manually_merged() {
     _mm_out=$("$API" "/api/v1/repos/$REPO/pulls/$1/merge" -X POST -H 'Content-Type: application/json' \
-        -d "{\"Do\":\"manually-merged\",\"MergeCommitID\":\"$2\"}" -w '\nmarked: http=%{http_code}\n' 2>/dev/null) || true
+        -d "{\"Do\":\"manually-merged\",\"MergeCommitID\":\"$2\"}" -w '\nmarked: http=%{http_code}\n' 2>&1) || true
     _mm_code=$(printf '%s\n' "$_mm_out" | sed -n 's/^marked: http=\([0-9][0-9]*\)$/\1/p' | tail -n 1)
     case "$_mm_code" in
         2*) log "  marked #$1 merged at $2" ; return 0 ;;
         405) log "  #$1 is ON MAIN at $2 but the forge REFUSED to mark it merged (405): allow_manual_merge is off."
              log "     The code landed; the PR stays open and says nothing. Turn the setting on once, then re-run:"
-             log "     hub-api.sh /api/v1/repos/$REPO -X PATCH -H 'Content-Type: application/json' -d '{\"allow_manual_merge\":true}'"
+             log "     hub-api /api/v1/repos/$REPO -X PATCH -H 'Content-Type: application/json' -d '{\"allow_manual_merge\":true}'"
              return 1 ;;
         *)   log "  #$1 is ON MAIN at $2 but marking it merged answered http=${_mm_code:-unreadable}: $(printf '%s\n' "$_mm_out" | sed -n 's/.*"message":"\([^"]*\)".*/\1/p' | head -1)"
+             # THE THIRD `_refusal_detail` SITE. Stderr went to /dev/null here, so a client that
+             # failed before any HTTP -- 2026-09-26, a credential helper naming a deleted script --
+             # logged `http=unreadable:` with nothing after the colon.
+             [ -n "$_mm_code" ] || _refusal_detail "$(printf '%s\n' "$_mm_out" | grep -v '^marked: http=')"
              return 1 ;;
     esac
 }
@@ -3259,7 +3274,7 @@ tips:$(printf ' %s' $BATCH_TIPS)"
             unlabel_held "$_n"; unlabel_one "$_n" "$MERGE_LABEL"
             "$API" "/api/v1/repos/$REPO/issues/$_n/labels" -X POST -H 'Content-Type: application/json' -d '{"labels":["merge-path:pr-queue"]}' -o /dev/null >/dev/null 2>&1
             _hr=$(_head_ref_of "$_n")   # was an inline copy of this function
-            [ -n "$_hr" ] && delete_merged_branch "$_hr"
+            [ -n "$_hr" ] && delete_merged_branch "$_hr" "$_n"
         else
             _marks_failed=$((_marks_failed + 1))
         fi
@@ -3755,7 +3770,7 @@ if [ -t 0 ]; then
     # A single quote via a variable, not more escaping: this line is inside a double-quoted
     # string in a shell script, and the nested form rendered as <<'"EOF"'. Measured on a pty.
     _sq="'"
-    log "    sh scripts/pr-queue.sh <<${_sq}EOF${_sq}"
+    log "    pr-queue <<${_sq}EOF${_sq}"
     log "    my-branch<TAB>a title"
     log "    EOF"
     log "  other verbs: approve <N> | drain [--dry-run] | merge-requested | prune-merged [--delete] | merge-paths [N]"
@@ -3937,7 +3952,7 @@ while IFS="$(printf '\t')" read -r ref title flag; do
     if [ "$flag" = review ]; then
         log "  #$num is GREEN and HELD for review — the queue stops here, nothing else admitted"
         label_held "$num"
-        log "  merge it with:  sh scripts/pr-queue.sh approve $num"
+        log "  merge it with:  pr-queue approve $num"
         exit 9
     fi
 

@@ -740,7 +740,7 @@ def test_approve_lands_only_what_it_was_given_and_names_the_drain_it_did_not_run
     assert "draining now" not in r.stdout, "approve handed on to a drain it was not asked for:\n" + r.stdout
     assert r.returncode == 0, r.stdout + r.stderr
     assert len(merges) == 1, merges
-    assert "#43 (other)" in r.stdout and "pr-queue.sh drain" in r.stdout, r.stdout
+    assert "#43 (other)" in r.stdout and "pr-queue drain" in r.stdout, r.stdout
 
 
 def test_a_run_from_a_session_detaches_returns_at_once_and_messages_the_session_on_exit(env, tmp_path):

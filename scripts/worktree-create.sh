@@ -298,7 +298,7 @@ git -C "$REF" rev-parse --verify --quiet "$FT_REMOTE/main" >/dev/null \
 validate_branch "$BRANCH" "$REF"
 
 DEST="$(dirname "$REF")/CC-$SLUG"
-[ -e "$DEST" ] && die "$DEST already exists — pick another slug, or reap it first (scripts/worktree-reap.sh)"
+[ -e "$DEST" ] && die "$DEST already exists — pick another slug, or reap it first (worktree-reap)"
 
 # Site 1: the include list, from `hub/main` rather than from the checkout.
 ENTRIES=$(entries_or_die "$REF")
@@ -425,7 +425,7 @@ $SELF ready.
   cd $DEST && claude          # launch the session HERE: its project dir is the cwd, and
                               # wiki-auto-commit.sh acts on the tree the session STARTED in.
 
-Registered in \`git worktree list\`, which is what scripts/worktree-reap.sh reads.
+Registered in \`git worktree list\`, which is what worktree-reap reads.
 
 This worktree is CLEAN — \`git status --porcelain\` is empty, every \`.worktreeinclude\` symlink
 included. That is load-bearing and not incidental: a worktree that starts with untracked symlinks is

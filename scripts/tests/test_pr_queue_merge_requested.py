@@ -305,7 +305,7 @@ def test_the_refusal_names_every_way_OUT_of_the_hold(env):
     for review went away", which is the reason that verb exists at all."""
     r = _run(env, STUB_ISSUE_LABELS=CARRIES_AND_HELD)
     assert "pr unhold" in r.stdout, r.stdout
-    assert "pr-queue.sh approve" in r.stdout, r.stdout
+    assert "pr-queue approve" in r.stdout, r.stdout
     assert "web UI" in r.stdout, r.stdout
 
 

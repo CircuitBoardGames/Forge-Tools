@@ -1514,7 +1514,7 @@ def _create_with_ci(server, tmp_path, contents, env=None):
 def test_pr_create_refuses_a_target_with_no_ci(server, tmp_path):
     r = _create_with_ci(server, tmp_path, {})
     assert r.returncode == 2, r.stdout + r.stderr
-    assert "has no CI" in r.stderr and "bootstrap-target-repo.sh" in r.stderr
+    assert "has no CI" in r.stderr and "(bootstrap-target-repo)" in r.stderr
     assert _Handler.received is None, "the PR was created on a target with no CI"
 
 
