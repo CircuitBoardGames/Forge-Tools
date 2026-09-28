@@ -1438,6 +1438,22 @@ def test_a_refused_BATCH_landing_prints_the_clients_own_words(world):
     assert "this client is STALE" in out, out
 
 
+def test_an_UNCOMMITTED_edit_to_the_running_queue_is_not_reported_as_main_moving(world, tmp_path):
+    """A development checkout: the running pr-queue.sh carries an edit nobody has committed, so its
+    blob differs from its upstream's and the check stopped every drain with "changed since this run
+    started" -- false, since nothing moved, and it sent the developer hunting for a landing. An
+    uncommitted edit has no upstream to be behind: the run says so and carries on."""
+    queue(world, 41, 42)
+    q = _installed_tools(tmp_path, moved=False)
+    with open(q, "a") as f:
+        f.write("# a local edit, not committed\n")
+    r = subprocess.run(["sh", str(q), "drain"], capture_output=True, text=True, env=world["env"], timeout=180)
+    out = r.stdout + r.stderr
+    assert "changed since this run started" not in out, out
+    assert "uncommitted" in out, "the skipped comparison was not said:\n" + out
+    assert subjects_on_main(world)[:2] == ["feat2", "feat1"], out
+
+
 # ---------------------------------------------------------------------------------------------
 # TICKET NUMBERS RESOLVE AGAINST THE HUB, NOT THE PR'S REPO.
 #

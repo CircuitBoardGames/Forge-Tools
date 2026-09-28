@@ -161,11 +161,12 @@ def reap(ref: Path, proc: Path, *args: str, oracle: Path | None = None,
                           capture_output=True, env=env)
 
 
-def create(ref: Path, *args: str):
+def create(ref: Path, *args: str, **extra: str):
     # The toolchain probe measures the BOX, not the worktree, and is advisory in the script. Off
     # here so a test never depends on whether this machine has run `npm ci`.
     env = dict(os.environ, WORKTREE_CHECK_TOOLCHAIN="0",
                FORGE_TOOLS_REMOTE="hub")  # the fixture's remote: create cut from hub/main before it became configuration
+    env.update(extra)
     return subprocess.run(["sh", str(CREATE), *args], cwd=str(ref), text=True,
                           capture_output=True, env=env)
 
@@ -419,6 +420,15 @@ def test_report_mode_removes_nothing(tmp_path):
 
 # ---------------------------------------------------------------------------------------------
 # Creation, and the health check that must be able to fail.
+
+def test_the_worktree_prefix_is_configuration_not_a_deployment_name(tmp_path):
+    """`CC-` is one deployment's name for its hub checkout, and every consumer's worktrees wore it.
+    FORGE_TOOLS_WORKTREE_PREFIX names it; the default stays `CC-` so existing trees keep matching."""
+    ref = make_ref_tree(tmp_path)
+    r = create(ref, "demo", FORGE_TOOLS_WORKTREE_PREFIX="wt-")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (tmp_path / "wt-demo").is_dir() and not (tmp_path / "CC-demo").exists(), os.listdir(tmp_path)
+
 
 def test_create_produces_a_worktree_that_passes_its_own_check(tmp_path):
     ref = make_ref_tree(tmp_path)

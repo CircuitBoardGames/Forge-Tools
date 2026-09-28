@@ -47,6 +47,10 @@
 # (HUB_API_CONFIG, HUB_ACCESS_CONFIG, GATE_WATCH_SECRET_FILE override per file.)
 #FORGE_TOOLS_CREDENTIALS_DIR=
 
+# Prefix of the worktrees worktree-create makes beside the reference checkout (<prefix><slug>).
+# Default: CC-, kept so trees made before this key existed still match.
+#FORGE_TOOLS_WORKTREE_PREFIX=
+
 # Wiki page titles, comma-separated, that the harness injects at session start: handoff.sh publish
 # holds them to the injector's size ceiling (read from HANDOFF_CACHE_HOOK). Default: none -- and
 # publish says so while this is unset. Set it empty to state that nothing is injected.

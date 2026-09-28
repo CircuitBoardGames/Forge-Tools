@@ -18,6 +18,7 @@ DEFAULTS = {
     "MERGE_SCRATCH_PREFIX": os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.join(_HOME, ".cache"),
                                          "forge-tools", "merge"),
     "CREDENTIALS_DIR": os.path.join(_XDG_CONFIG, "forge-tools"),
+    "WORKTREE_PREFIX": "CC-",
 }
 
 

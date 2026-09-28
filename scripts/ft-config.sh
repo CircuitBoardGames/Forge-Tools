@@ -42,6 +42,7 @@ unset _ft_line _ft_k _ft_v
 : "${FORGE_TOOLS_REMOTE:=origin}"
 : "${FORGE_TOOLS_MERGE_SCRATCH_PREFIX:=${XDG_CACHE_HOME:-$HOME/.cache}/forge-tools/merge}"
 : "${FORGE_TOOLS_CREDENTIALS_DIR:=${XDG_CONFIG_HOME:-$HOME/.config}/forge-tools}"
+: "${FORGE_TOOLS_WORKTREE_PREFIX:=CC-}"
 
 # ft_need KEY WHAT -- exit 1, naming FORGE_TOOLS_KEY and the config file, when it is unset or empty.
 # For the keys with NO neutral default (the forge URL, the owner): guessing either acts on somebody

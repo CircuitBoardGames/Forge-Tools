@@ -762,6 +762,22 @@ def test_resolve_REFUSES_a_ticket_whose_claiming_session_is_LIVE(forge, tmp_path
     assert forge.issues[n]["state"] == "open", "a refused resolve still closed the ticket"
 
 
+def test_a_session_resolves_its_OWN_live_claim_without_take_over(forge, tmp_path):
+    """The case that was refused after the hub switched to the installed client: the SAME session
+    claims and then resolves. With its identity mapped, `claim` records it and `resolve` finds the
+    caller IS the live holder. Before the no-identity refusal, a session the client could not name
+    recorded a session-less claim and was then refused by it as a stranger."""
+    m = mk_map(forge, body="## Decisions so far\n\n")
+    n = forge.add(title="mine")["number"]
+    forge.env["HUB_API_ATTEST"] = _resolver(tmp_path, 0, "  pid       4242")
+    forge.env["FORGE_TOOLS_SESSION_ID"] = ENDED_SID
+    c = forge.run("claim", "o/r", str(n))
+    assert c.returncode == 0, c.stdout + c.stderr
+    r = forge.run("resolve", "o/r", str(n), str(m["number"]), "the answer")
+    assert r.returncode == 0, "a session was refused by its own live claim:\n" + r.stdout + r.stderr
+    assert forge.issues[n]["state"] == "closed"
+
+
 def test_resolve_TAKES_OVER_a_live_claim_only_when_asked(forge, tmp_path):
     """PASSES ON BASE: the old `resolve` ignores claims entirely, so it closes the ticket with or
     without the flag. The refusal test above is the one that fails on base; this pins that the flag

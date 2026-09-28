@@ -249,7 +249,7 @@ case "${1:-}" in
         exit $?
         ;;
     ''|-*)
-        echo "usage: $0 <slug> [branch]        create ../CC-<slug> on $FT_REMOTE/main" >&2
+        echo "usage: $0 <slug> [branch]        create ../${FORGE_TOOLS_WORKTREE_PREFIX}<slug> on $FT_REMOTE/main" >&2
         echo "       $0 --check [path]         verify an existing worktree" >&2
         exit 2
         ;;
@@ -297,7 +297,7 @@ git -C "$REF" rev-parse --verify --quiet "$FT_REMOTE/main" >/dev/null \
 
 validate_branch "$BRANCH" "$REF"
 
-DEST="$(dirname "$REF")/CC-$SLUG"
+DEST="$(dirname "$REF")/${FORGE_TOOLS_WORKTREE_PREFIX}$SLUG"
 [ -e "$DEST" ] && die "$DEST already exists — pick another slug, or reap it first (worktree-reap)"
 
 # Site 1: the include list, from `hub/main` rather than from the checkout.

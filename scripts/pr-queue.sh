@@ -1566,6 +1566,15 @@ _stop_if_code_superseded() {
     git -C "$HUB" fetch -q "$FT_REMOTE" 2>/dev/null
     if ! _cur_blob=$(git -C "$HUB" rev-parse -q --verify "$FT_REMOTE/main:scripts/pr-queue.sh" 2>/dev/null); then
         _self_top=$(git -C "$SELF_DIR" rev-parse --show-toplevel 2>/dev/null) || return 0  # not a checkout: unproven, so continue
+        # AN UNCOMMITTED EDIT HAS NO UPSTREAM TO BE BEHIND. A development checkout running its own
+        # edited pr-queue.sh differs from upstream by construction, and this stopped every drain with
+        # "changed since this run started" -- false, and it sent the developer hunting for a landing.
+        # Said once and skipped: a dirty checkout is a developer's, not an installed queue's.
+        if ! git -C "$_self_top" diff --quiet HEAD -- "$SELF" 2>/dev/null; then
+            [ -n "${_SUPERSEDE_SKIP_SAID:-}" ] || log "NOTE: $SELF has uncommitted changes, so it is not compared with its upstream -- the superseded-code check is skipped for this run."
+            _SUPERSEDE_SKIP_SAID=1
+            return 0
+        fi
         git -C "$_self_top" fetch -q 2>/dev/null
         _cur_blob=$(git -C "$_self_top" rev-parse -q --verify "@{upstream}:${SELF#"$_self_top"/}" 2>/dev/null) || return 0  # no upstream: unproven, so continue
     fi
