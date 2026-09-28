@@ -2921,6 +2921,20 @@ def need(k, usage):
     return args
 
 
+# NO IDENTITY IS NAMED, NOT GUESSED. The core takes the caller's session only as
+# FORGE_TOOLS_SESSION_ID, mapped by a harness adapter at session start (adapters/). A session
+# started before its adapter was enabled has none until it resumes, clears or compacts -- and it
+# was refused as a stranger by its OWN live claim, or recorded a claim frontier skips for ever.
+NO_IDENTITY = ("this shell has no FORGE_TOOLS_SESSION_ID, so the core cannot tell whose claim is "
+               "whose. Your harness adapter (adapters/) sets it at session start; a session that "
+               "started before the adapter was enabled gets it on resume, clear or compact, or run "
+               "`export FORGE_TOOLS_SESSION_ID=<this session's id>` and re-run.")
+
+def refuse_live(n, holder, me):
+    die("REFUSING: #%d is claimed by session %s, which is LIVE. Ask it, or pass --take-over for "
+        "an agreed handover.%s" % (n, holder[:8], ("\n  It may be YOUR claim: " + NO_IDENTITY)
+                                   if not me else ""))
+
 if verb == "map-create":
     need(1, "map-create <owner/repo> <title> [body]")
     body = args[1] if len(args) > 1 else ""
@@ -3327,14 +3341,19 @@ elif verb == "claim":
     # reads the newest claimant with `claim_state`; this reads the same answer before writing.
     # `--take-over` is the handover (a successor adopting its predecessor's ticket).
     take_over = "--take-over" in args
-    args = [a for a in args if a != "--take-over"]
-    need(1, "claim <owner/repo> <n> [user] [--take-over]")
+    no_session = "--no-session" in args
+    args = [a for a in args if a not in ("--take-over", "--no-session")]
+    need(1, "claim <owner/repo> <n> [user] [--take-over] [--no-session]")
     n, who = issue_num(args[0], "issue number"), (args[1] if len(args) > 1 else ME)
     _me = os.environ.get("FORGE_TOOLS_SESSION_ID", "")
+    if _me in ("", "unknown") and not no_session:
+        # Refused BEFORE any write: an unrecorded claim is skipped by frontier until someone notices.
+        # `--no-session` is the deliberate form, for a person claiming from a plain terminal.
+        die("REFUSING to claim #%d with no session identity: %s\n  To claim without one on "
+            "purpose, pass --no-session." % (n, NO_IDENTITY))
     _state, _holder = claim_state(n)
     if _state == "live" and _holder and _holder != _me and not take_over:
-        die("REFUSING: #%d is claimed by session %s, which is LIVE. Ask it, or pass "
-            "--take-over for an agreed handover." % (n, _holder[:8]))
+        refuse_live(n, _holder, _me)
     got = api("/api/v1/repos/%s/issues/%d" % (repo, n), "PATCH", {"assignees": [who]})
     # Forgejo drops an assignee it will not accept and still answers 201.
     if who not in [a["login"] for a in (got or {}).get("assignees") or []]:
@@ -3393,8 +3412,7 @@ elif verb == "unclaim":
     _me = os.environ.get("FORGE_TOOLS_SESSION_ID", "")
     _state, _holder = claim_state(n)
     if _state == "live" and _holder and _holder != _me and not take_over:
-        die("REFUSING: #%d is claimed by session %s, which is LIVE. Ask it, or pass "
-            "--take-over for an agreed handover." % (n, _holder[:8]))
+        refuse_live(n, _holder, _me)
     cur = api("/api/v1/repos/%s/issues/%d" % (repo, n))
     held = [x["login"] for x in (cur or {}).get("assignees") or []]
     if who not in held:
@@ -3418,10 +3436,9 @@ elif verb == "resolve":
     n, mapno, comment = (issue_num(args[0], "issue number"), issue_num(args[1], "map#"),
                          text_arg(args[2], "resolution comment"))
     _state, _holder = claim_state(n)
-    if _state == "live" and _holder and _holder != os.environ.get("FORGE_TOOLS_SESSION_ID", "") \
-            and not take_over:
-        die("REFUSING: #%d is claimed by session %s, which is LIVE. Ask it, or pass "
-            "--take-over for an agreed handover." % (n, _holder[:8]))
+    _me = os.environ.get("FORGE_TOOLS_SESSION_ID", "")
+    if _state == "live" and _holder and _holder != _me and not take_over:
+        refuse_live(n, _holder, _me)
 
     # THE GIST IS THE INDEX, AND DERIVING IT FROM THE FIRST LINE PRODUCED `## Resolution`.
     # The map is an index, not a store -- the wayfinder convention: "one line per closed

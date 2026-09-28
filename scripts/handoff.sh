@@ -632,6 +632,18 @@ publish)
                 exit 1
             fi
             if session-attest resolve "$_pub_holder" >/dev/null 2>&1; then
+                # NO IDENTITY IS NOT A FOREIGN HOLDER. With FORGE_TOOLS_SESSION_ID empty,
+                # "not this one" is inferred, not measured -- the page may be the caller's own, and
+                # the foreign-holder override would train sessions to publish over live holders.
+                if [ -z "$_pub_me" ]; then
+                    echo "handoff: REFUSING to publish over \"$PAGE\" -- it names LIVE holder $_pub_holder," >&2
+                    echo "  and this shell has no FORGE_TOOLS_SESSION_ID, so the page may be YOUR OWN." >&2
+                    echo "  Your harness adapter sets it at session start; a session started before the" >&2
+                    echo "  adapter was enabled gets it on resume, clear or compact, or run" >&2
+                    echo "  \`export FORGE_TOOLS_SESSION_ID=<this session's id>\` and re-run." >&2
+                    echo "  HANDOFF_ALLOW_FOREIGN_HOLDER=1 is for a page held by ANOTHER live session." >&2
+                    exit 1
+                fi
                 echo "handoff: REFUSING to publish over \"$PAGE\" -- it names holder $_pub_holder," >&2
                 echo "  and that session resolves to a LIVE session which is not this one." >&2
                 echo "  Publishing would overwrite a page somebody is holding; that is how CC 1 was" >&2

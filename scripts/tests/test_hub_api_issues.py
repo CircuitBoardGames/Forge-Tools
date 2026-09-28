@@ -395,6 +395,9 @@ def forge(tmp_path):
     # HEAD, not hub/main: the currency guard otherwise runs a real `git fetch hub main` over the
     # network on EVERY write verb -- 1.4 s per test, 42% of the whole suite (measured 2026-09-16).
     env["HUB_API_CURRENCY_REF"] = "HEAD"
+    # The CALLER's identity must not leak in: `claim` refuses without one, so a run from an agent
+    # session passed tests that the runner, which has none, failed. Tests that need one set it.
+    env.pop("FORGE_TOOLS_SESSION_ID", None)
 
     def run(*args):
         return subprocess.run(
@@ -681,13 +684,51 @@ def test_a_claim_with_no_session_id_does_not_leave_the_releaser_as_the_LIVE_hold
     it["assignees"] = []
     forge.env["HUB_API_ATTEST"] = _resolver(tmp_path, 0, "  pid       4242")
     forge.env["FORGE_TOOLS_SESSION_ID"] = ""
-    r = forge.run("claim", "o/r", str(it["number"]))
+    r = forge.run("claim", "o/r", str(it["number"]), "--no-session")
     assert r.returncode == 0, r.stdout + r.stderr
     forge.env["FORGE_TOOLS_SESSION_ID"] = ENDED_SID
     r = forge.run("claim", "o/r", str(it["number"]))
     out = r.stdout + r.stderr
     assert "849dd2a3" not in out, "the releaser was still named as the holder:\n" + out
     assert r.returncode == 0, out
+
+
+# --- a caller with no session identity is refused loudly, never recorded silently ----
+# test_claim_RECORDS_the_claiming_session is the control for the claim refusal; the id-set
+# refusal in test_resolve_REFUSES_... is the control for "It may be YOUR claim".
+
+def test_claim_with_NO_session_identity_is_REFUSED_and_writes_nothing(forge):
+    """`claim` wrote `claim-session: unrecorded-N`, exit 0, and frontier skipped the
+    ticket for ever -- measured in a session started before the Forge-Tools adapter."""
+    it = forge.add(title="ticket")
+    forge.env["FORGE_TOOLS_SESSION_ID"] = ""
+    r = forge.run("claim", "o/r", str(it["number"]))
+    out = r.stdout + r.stderr
+    assert r.returncode != 0, "an identity-less claim was accepted:\n" + out
+    assert "no session identity" in out and "--no-session" in out, out
+    assert not forge.comments.get(it["number"]), forge.comments
+    assert not forge.issues[it["number"]].get("assignees"), "it assigned before refusing"
+
+
+def test_resolve_refusal_with_NO_identity_says_it_may_be_YOUR_claim(forge, tmp_path):
+    """`resolve` refused a session's OWN live claim as a stranger's, and did not say why."""
+    mapno, n = _claimed_ticket_and_map(forge)
+    forge.env["HUB_API_ATTEST"] = _resolver(tmp_path, 0, "  pid       4242")
+    forge.env["FORGE_TOOLS_SESSION_ID"] = ""
+    r = forge.run("resolve", "o/r", str(n), str(mapno), "the answer")
+    out = r.stdout + r.stderr
+    assert r.returncode != 0, out
+    assert "It may be YOUR claim" in out and "FORGE_TOOLS_SESSION_ID" in out, out
+
+
+def test_unclaim_refusal_with_NO_identity_says_it_may_be_YOUR_claim(forge, tmp_path):
+    it = _claimed_by(forge, OTHER_SID, title="held")
+    forge.env["HUB_API_ATTEST"] = _resolver(tmp_path, 0, "  pid       4242")
+    forge.env["FORGE_TOOLS_SESSION_ID"] = ""
+    r = forge.run("unclaim", "o/r", str(it["number"]), "claude")
+    out = r.stdout + r.stderr
+    assert r.returncode != 0, out
+    assert "It may be YOUR claim" in out, out
 
 
 def test_resolve_of_a_RELEASED_ticket_is_not_refused_while_its_releaser_lives(forge, tmp_path):
@@ -717,6 +758,7 @@ def test_resolve_REFUSES_a_ticket_whose_claiming_session_is_LIVE(forge, tmp_path
     r = forge.run("resolve", "o/r", str(n), str(mapno), "the answer")
     assert r.returncode != 0, "a LIVE claim was resolved over:\n" + r.stdout + r.stderr
     assert "REFUSING" in r.stdout + r.stderr and "849dd2a3" in r.stdout + r.stderr, r.stdout + r.stderr
+    assert "YOUR claim" not in r.stdout + r.stderr, "a caller WITH an identity was told it may be its own"
     assert forge.issues[n]["state"] == "open", "a refused resolve still closed the ticket"
 
 
@@ -1158,6 +1200,7 @@ def test_a_claim_that_does_not_stick_is_reported(forge):
     """Forgejo drops an assignee it will not accept and still answers 2xx."""
     forge.add(title="ticket")
     forge.drop_assignees = True
+    forge.env["FORGE_TOOLS_SESSION_ID"] = ENDED_SID
     r = forge.run("claim", "o/r", "1", "alice")
     assert r.returncode == 2, r.stdout + r.stderr
     assert "did not take" in r.stderr
@@ -1165,6 +1208,7 @@ def test_a_claim_that_does_not_stick_is_reported(forge):
 
 def test_a_claim_that_sticks_passes__control(forge):
     forge.add(title="ticket")
+    forge.env["FORGE_TOOLS_SESSION_ID"] = ENDED_SID
     r = forge.run("claim", "o/r", "1")
     assert r.returncode == 0, r.stdout + r.stderr
     assert forge.issues[1]["assignees"] == [{"login": "alice"}]

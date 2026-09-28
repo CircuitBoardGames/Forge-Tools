@@ -1419,7 +1419,7 @@ def by_subscription():
         spec = importlib.util.spec_from_file_location("gate_watch", os.path.join(self_dir, "gate-watch.py"))
         gw = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(gw)
-        subs = gw.open_subscriptions()
+        subs = gw.pr_authors()   # not open_subscriptions: after a merge the author's has ended
     except Exception:
         return None
     for s in sorted(subs, key=lambda s: s.get("at", ""), reverse=True):

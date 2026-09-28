@@ -169,6 +169,26 @@ def test_an_ended_or_foreign_subscription_is_not_the_owner(world, tmp_path):
     assert _owner_pid(world["hub"], "agent/feat", world["proc"], "12", "o/r", foreign) == ""
 
 
+def test_a_PR_that_closed_still_names_its_author(world, tmp_path):
+    """The queue's own merge path. gate-watch unsubscribes a PR's author the moment the PR closes
+    (why="PR closed"), and the queue looks for the owner of a held branch only AFTER merging -- so a
+    lookup that reads only OPEN subscriptions finds nobody, every time. Measured 2026-09-26:
+    subscribe 02:23:02, merge 02:26:52, unsubscribe 02:26:54, owner lookup 02:27:15, nobody told."""
+    _live(world["proc"], "5151", world["hub"], "777")
+    closed = dict(_sub(5151, event="unsubscribe", at="2026-09-22T22:10:00Z"), why="PR closed")
+    reg = _registry(tmp_path, _sub(5151), closed)
+    assert _owner_pid(world["hub"], "agent/feat", world["proc"], "12", "o/r", reg) == "5151"
+
+
+def test_a_subscriber_that_left_is_not_the_author(world, tmp_path):
+    """PASSES ON BASE: the control. "subscriber gone" means the process ended; that pid names nobody."""
+    _live(world["proc"], "5151", world["hub"], "777")
+    gone = dict(_sub(5151, event="unsubscribe", at="2026-09-22T22:10:00Z"),
+                why="subscriber gone (pid recycled or exited)")
+    reg = _registry(tmp_path, _sub(5151), gone)
+    assert _owner_pid(world["hub"], "agent/feat", world["proc"], "12", "o/r", reg) == ""
+
+
 def test_the_worktree_session_still_wins_over_a_subscriber(world, tmp_path):
     """PASSES ON BASE: the cwd arm is unchanged and consulted first."""
     _fake_pid(world["proc"], "4242", "claude", world["wt"])

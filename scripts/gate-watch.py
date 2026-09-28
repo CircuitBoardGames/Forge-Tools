@@ -304,6 +304,22 @@ def open_subscriptions():
     return list(state.values())
 
 
+def pr_authors():
+    """Every PR's subscribers, INCLUDING those ended because the PR itself closed (why "PR ...").
+    `open_subscriptions` answers "who still wants verdicts"; this answers "who wrote the PR". The two
+    differ exactly after a merge, which is when the queue asks: it merges, gate-watch ends the
+    subscription, and only then does the queue look for the author of a branch it could not delete.
+    Only "subscriber gone" -- the process itself ended -- stops a subscriber being the author."""
+    state = {}
+    for ev in events():
+        k = (ev.get("repo"), str(ev.get("pr")), str(ev.get("pid")))
+        if ev.get("event") == "subscribe":
+            state[k] = ev
+        elif ev.get("event") == "unsubscribe" and not str(ev.get("why", "")).startswith("PR "):
+            state.pop(k, None)
+    return list(state.values())
+
+
 def _pr_state(repo, pr):
     """(state, head_sha, is_draft) for a PR, or (None, None, None) if it cannot be read. A forge that is down or a
     token that 403s must leave the subscription ALONE rather than close it: an unreadable PR is not
